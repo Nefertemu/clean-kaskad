@@ -1,100 +1,184 @@
-# CleanKaskad
+# CleanKaskad 3
 
-Чистый менеджер TCP/UDP-переадресаций через российский VPS. Без рекламы, QR-кодов, донатов, телеметрии и сброса чужих правил firewall.
+CleanKaskad превращает российский VPS в прозрачный TCP/UDP-мост до зарубежного сервера.
 
-Основной сценарий для AmneziaWG 2.0:
+Главная идея максимально простая:
 
 ```text
-AWG-клиент → RU_SERVER_IP:40443 → FOREIGN_AWG_IP:585
+клиент → RU_IP:PORT → FOREIGN_IP:PORT
 ```
 
-На российский сервер **не требуется устанавливать AmneziaWG**. CleanKaskad пересылает уже зашифрованные пакеты через DNAT + MASQUERADE.
+Порт на российском сервере в обычном режиме **всегда совпадает** с портом зарубежного сервиса. Поэтому в готовой конфигурации клиента меняется только IP:
 
-## Установка одной командой
+```ini
+# Было
+Endpoint = 89.124.251.231:585
+
+# Стало
+Endpoint = RU_PUBLIC_IP:585
+```
+
+Ключи, параметры AmneziaWG и порт остаются прежними.
+
+## Установка
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Nefertemu/clean-kaskad/main/install.sh | sudo bash
 ```
 
-После установки меню запускается так:
+Повторный запуск:
 
 ```bash
 sudo kaskad
 ```
 
-## Что есть в меню
+## Быстрый режим AWG/WireGuard
 
-- отдельные мастера для AWG/WireGuard, VLESS/Xray, MTProto/TProxy и произвольного TCP/UDP;
-- запрос протокола, входного порта, IP и порта зарубежного сервера;
-- автоматическое определение сетевых интерфейсов с возможностью изменить их;
-- просмотр, изменение и удаление отдельных мостов;
-- диагностика, счётчики пакетов и восстановление после перезагрузки;
-- обновление из GitHub;
-- безопасный сброс только собственных цепочек.
+1. Выберите `AWG / WireGuard`.
+2. Вставьте зарубежный endpoint целиком:
 
-## Пример AWG 2.0
-
-Допустим:
-
-- зарубежный AWG: `203.0.113.10:585`;
-- клиент должен подключаться к российскому серверу на UDP `40443`.
-
-Откройте меню:
-
-```bash
-sudo kaskad
+```text
+89.124.251.231:585
 ```
 
-Выберите `Добавить мост` → `AmneziaWG / WireGuard` и введите данные. Затем в клиентском AWG-конфиге замените только endpoint:
+Также можно вставить строку из конфига:
 
 ```ini
-Endpoint = RU_SERVER_IP:40443
+Endpoint = 89.124.251.231:585
 ```
 
-Ключи и параметры AWG 2.0 остаются от зарубежного сервера.
+CleanKaskad автоматически создаст:
 
-Командный вариант:
-
-```bash
-sudo kaskad add udp 40443 203.0.113.10 585 eth0 eth0 "AWG Germany"
+```text
+UDP RU_PUBLIC_IP:585 → 89.124.251.231:585
 ```
 
-## Команды
+Входящий и выходящий интерфейсы определяются автоматически. Скрипт не спрашивает их в обычном режиме.
+
+## Возможности
+
+- зеркальный порт по умолчанию: порт не нужно вводить второй раз;
+- готовая строка `Endpoint = RU_IP:PORT` после создания;
+- AWG/WireGuard, VLESS/Xray, MTProto и универсальный TCP/UDP;
+- отдельный advanced-режим для намеренной замены порта;
+- hostname и IPv4 в качестве зарубежного endpoint;
+- автоматическое повторное разрешение hostname при восстановлении;
+- собственные цепочки iptables без глобального `iptables -F`;
+- совместимость с UFW, Docker и существующими VPN-правилами;
+- транзакционное изменение конфигурации с автоматическим откатом;
+- резервные копии последних 20 версий правил;
+- systemd-восстановление после перезагрузки;
+- счётчики пакетов и трафика;
+- диагностика маршрута, публичного IP и firewall hooks;
+- предупреждение о конфликте с локальным сервисом на том же порту;
+- обновление из GitHub командой `sudo kaskad update`;
+- CLI для автоматизации.
+
+## CLI
 
 ```bash
-sudo kaskad              # меню
-sudo kaskad list         # список мостов
-sudo kaskad status       # диагностика и счётчики
-sudo kaskad restore      # восстановить правила
-sudo kaskad update       # обновить из GitHub
-sudo kaskad delete ID    # удалить мост по ID
-sudo kaskad reset        # удалить только мосты CleanKaskad
-sudo kaskad uninstall    # удалить программу и её правила
+sudo kaskad add awg 89.124.251.231:585 dataforest
+sudo kaskad add vless vpn.example.com:443 europe
+sudo kaskad add mtproto 1.2.3.4:443 telegram
+sudo kaskad add mirror udp 1.2.3.4:585 custom
 ```
 
-## Безопасность
-
-CleanKaskad использует только собственные цепочки:
-
-- `CK_PREROUTING`;
-- `CK_POSTROUTING`;
-- `CK_FORWARD`.
-
-Скрипт не выполняет общий `iptables -F`, не меняет политики `INPUT/FORWARD/OUTPUT`, не очищает Docker/UFW и не включает BBR без необходимости.
-
-Правила хранятся в `/etc/cleankaskad/rules.tsv`, резервные копии — в `/etc/cleankaskad/backups/`. После загрузки системы правила восстанавливает `cleankaskad.service`.
-
-## Требования
-
-- Ubuntu или Debian;
-- IPv4;
-- root/sudo;
-- открытый входящий порт в firewall/security group хостинга.
-
-## Удаление
+Только в advanced-режиме указывается отдельный российский порт:
 
 ```bash
+sudo kaskad add advanced udp 40443 1.2.3.4:585 translated
+```
+
+Остальные команды:
+
+```bash
+sudo kaskad list
+sudo kaskad endpoints
+sudo kaskad diagnose
+sudo kaskad heal
+sudo kaskad restore
+sudo kaskad backup
+sudo kaskad update
+sudo kaskad reset
 sudo kaskad uninstall
 ```
 
-Удаляются только CleanKaskad и созданные им цепочки.
+## Как это работает
+
+CleanKaskad создаёт только собственные цепочки:
+
+```text
+CK_PREROUTING
+CK_POSTROUTING
+CK_FORWARD
+```
+
+В них находятся правила DNAT, MASQUERADE и разрешение обратного трафика. Остальные цепочки и политики firewall не очищаются.
+
+Конфигурация хранится в:
+
+```text
+/etc/cleankaskad/rules.tsv
+```
+
+Systemd unit:
+
+```text
+cleankaskad.service
+```
+
+## Firewall хостинга
+
+На российском VPS нужно разрешить входящий порт и протокол, совпадающие с зарубежным endpoint.
+
+Например, для:
+
+```ini
+Endpoint = 89.124.251.231:585
+```
+
+разрешите:
+
+```text
+UDP 585
+```
+
+## Проверка
+
+После подключения клиента:
+
+```bash
+sudo kaskad diagnose
+```
+
+Если счётчик пакетов остаётся равным нулю, трафик не дошёл до российского VPS. Обычно нужно проверить:
+
+- IP в клиентском Endpoint;
+- порт и протокол;
+- firewall/security group российского хостинга;
+- доступность RU-IP из сети клиента.
+
+Если пакеты растут, но handshake отсутствует, проверяйте зарубежный endpoint и работающий на нём сервис.
+
+## Поддерживаемые системы
+
+- Ubuntu 20.04 и новее;
+- Debian 11 и новее;
+- IPv4;
+- iptables legacy и iptables-nft backend.
+
+IPv6 forwarding в текущей версии намеренно не настраивается.
+
+## Безопасность
+
+Перед установкой из `curl | bash` можно прочитать код:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nefertemu/clean-kaskad/main/cleankaskad.sh | less
+```
+
+CleanKaskad не отправляет телеметрию и не содержит рекламных ссылок.
+
+## Лицензия
+
+MIT.
