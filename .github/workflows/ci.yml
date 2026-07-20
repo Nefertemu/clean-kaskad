@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax and unit tests
+        run: |
+          chmod +x cleankaskad.sh install.sh tests/*.sh
+          ./tests/static.sh
+          ./tests/unit.sh
+          ./tests/mock-firewall.sh
